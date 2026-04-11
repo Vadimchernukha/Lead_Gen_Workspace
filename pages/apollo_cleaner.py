@@ -35,7 +35,7 @@ def run() -> None:
         s_col1, s_col2 = st.columns([3, 2])
         with s_col1:
             run_step1 = st.checkbox("Step 1 — Rule-based cleaning", value=True)
-            run_step2 = st.checkbox("Step 2 — AI enrichment (Claude Opus)", value=False)
+            run_step2 = st.checkbox("Step 2 — AI enrichment (Claude Sonnet)", value=False)
             run_step3 = st.checkbox("Step 3 — Email domain check", value=True)
         with s_col2:
             api_key_input = st.text_input(

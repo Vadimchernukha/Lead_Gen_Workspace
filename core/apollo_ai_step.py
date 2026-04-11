@@ -51,7 +51,7 @@ COL_STATE = 14
 COL_CITY = 15
 
 BATCH_SIZE = 20
-MODEL = "claude-opus-4-5"
+MODEL = "claude-sonnet-4-5"
 MAX_TRAINING_CHARS = 40_000
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
