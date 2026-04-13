@@ -24,6 +24,7 @@ st.markdown(
 TOOLS = [
     "Lead Scoring",
     "Apollo Cleaner",
+    "Email Generator",
 ]
 
 if "active_tool" not in st.session_state:
@@ -51,4 +52,7 @@ if active == "Lead Scoring":
     run()
 elif active == "Apollo Cleaner":
     from pages.apollo_cleaner import run
+    run()
+elif active == "Email Generator":
+    from pages.email_generator import run
     run()
