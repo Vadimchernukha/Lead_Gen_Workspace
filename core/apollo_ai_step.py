@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -52,6 +53,8 @@ COL_CITY = 15
 
 BATCH_SIZE = 20
 MODEL = "claude-sonnet-4-5"
+MAX_RETRIES = 5
+RETRY_BASE_DELAY = 5  # seconds
 MAX_TRAINING_CHARS = 40_000
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -247,61 +250,80 @@ def run(
 
         user_msg = _build_user_message(batch)
 
-        try:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_msg}],
-            )
-            raw = response.content[0].text.strip()
-            # Strip markdown code fences if present
-            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            parsed = json.loads(raw)
-            results: list[dict] = parsed.get("results", [])
+        for attempt in range(1, MAX_RETRIES + 1):
+            if should_stop and should_stop():
+                break
+            try:
+                response = client.messages.create(
+                    model=MODEL,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_msg}],
+                )
+                raw = response.content[0].text.strip()
+                # Strip markdown code fences if present
+                raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(raw)
+                results: list[dict] = parsed.get("results", [])
 
-            for item in results:
-                local_i = item.get("i")
-                if local_i is None or local_i >= len(batch):
-                    continue
-                global_i = batch[local_i][0]
-                out_row = out_rows[global_i]
+                for item in results:
+                    local_i = item.get("i")
+                    if local_i is None or local_i >= len(batch):
+                        continue
+                    global_i = batch[local_i][0]
+                    out_row = out_rows[global_i]
 
-                right_company = item.get("right_company", "").strip()
-                right_title = item.get("right_title", "").strip()
-                ai_country = item.get("country", "").strip()
-                ai_state = item.get("state", "").strip()
-                ai_city = item.get("city", "").strip()
+                    right_company = item.get("right_company", "").strip()
+                    right_title = item.get("right_title", "").strip()
+                    ai_country = item.get("country", "").strip()
+                    ai_state = item.get("state", "").strip()
+                    ai_city = item.get("city", "").strip()
 
-                out_row[company_idx + 1] = right_company
+                    out_row[company_idx + 1] = right_company
 
-                # title_idx already shifted by 1 for Right Company Name insertion
-                out_row[title_idx + 1] = right_title
+                    # title_idx already shifted by 1 for Right Company Name insertion
+                    out_row[title_idx + 1] = right_title
 
-                # Location: only fill empty fields
-                # country/state/city indices in out_row (accounting for 2 inserted cols)
-                # Original COL_COUNTRY=13, COL_STATE=14, COL_CITY=15 → shifted by 2
-                country_i = COL_COUNTRY + 2
-                state_i = COL_STATE + 2
-                city_i = COL_CITY + 2
+                    # Location: only fill empty fields
+                    # country/state/city indices in out_row (accounting for 2 inserted cols)
+                    # Original COL_COUNTRY=13, COL_STATE=14, COL_CITY=15 → shifted by 2
+                    country_i = COL_COUNTRY + 2
+                    state_i = COL_STATE + 2
+                    city_i = COL_CITY + 2
 
-                if not out_row[country_i]:
-                    out_row[country_i] = ai_country
-                if not out_row[state_i]:
-                    out_row[state_i] = ai_state
-                if not out_row[city_i]:
-                    out_row[city_i] = ai_city
+                    if not out_row[country_i]:
+                        out_row[country_i] = ai_country
+                    if not out_row[state_i]:
+                        out_row[state_i] = ai_state
+                    if not out_row[city_i]:
+                        out_row[city_i] = ai_city
 
-            processed += len(batch)
+                break  # success
 
-        except json.JSONDecodeError as e:
-            errors += 1
-            log.append(f"Batch {batch_num + 1}: JSON parse error — {e}")
-            processed += len(batch)
-        except anthropic.APIError as e:
-            errors += 1
-            log.append(f"Batch {batch_num + 1}: API error — {e}")
-            processed += len(batch)
+            except json.JSONDecodeError as e:
+                log.append(f"Batch {batch_num + 1}: JSON parse error — {e}")
+                errors += 1
+                break  # no point retrying a parse error
+
+            except anthropic.APIStatusError as e:
+                if e.status_code == 529 and attempt < MAX_RETRIES:
+                    delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    log.append(f"Batch {batch_num + 1}: overloaded, retry {attempt}/{MAX_RETRIES - 1} in {delay}s…")
+                    if on_progress:
+                        pct = processed / total if total else 0
+                        on_progress(pct, f"API overloaded — waiting {delay}s before retry…")
+                    time.sleep(delay)
+                else:
+                    log.append(f"Batch {batch_num + 1}: API error — {e}")
+                    errors += 1
+                    break
+
+            except anthropic.APIError as e:
+                log.append(f"Batch {batch_num + 1}: API error — {e}")
+                errors += 1
+                break
+
+        processed += len(batch)
 
     if on_progress:
         on_progress(1.0, f"Done. {processed} rows processed, {errors} batch errors.")
