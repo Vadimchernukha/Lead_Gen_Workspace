@@ -81,13 +81,13 @@ def run() -> None:
 
     with st.expander("Preview (first 5 rows)", expanded=False):
         if not peek_df.empty:
-            st.dataframe(peek_df, use_container_width=True)
+            st.dataframe(peek_df, width="stretch")
         else:
             st.warning("Could not preview file.")
 
     st.divider()
 
-    run_btn = st.button("▶ Run Pipeline", type="primary", use_container_width=True)
+    run_btn = st.button("▶ Run Pipeline", type="primary", width="stretch")
 
     if not run_btn:
         return
@@ -200,7 +200,7 @@ def run() -> None:
 
     if result_data:
         with st.expander("Preview (first 10 rows)", expanded=True):
-            st.dataframe(pd.DataFrame(result_data[:10], columns=result_header), use_container_width=True)
+            st.dataframe(pd.DataFrame(result_data[:10], columns=result_header), width="stretch")
 
         csv_bytes = pipeline.rows_to_csv_bytes(result_header, result_data)
         download_name = uploaded.name.removesuffix(".csv") + "_cleaned.csv"
@@ -209,7 +209,7 @@ def run() -> None:
             data=csv_bytes,
             file_name=download_name,
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
             type="primary",
         )
 

@@ -36,7 +36,7 @@ for col, label in zip(cols, TOOLS):
         if st.button(
             label,
             key=f"nav_{label}",
-            use_container_width=True,
+            width="stretch",
             type="primary" if is_active else "secondary",
         ):
             st.session_state.active_tool = label

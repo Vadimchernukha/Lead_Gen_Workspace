@@ -234,9 +234,9 @@ def run() -> None:
             "▶ START SCORE",
             type="primary",
             disabled=is_running or df is None or not api_key,
-            use_container_width=True,
+            width="stretch",
         )
-        b_stop = st.button("⏹ STOP", disabled=not is_running, use_container_width=True)
+        b_stop = st.button("⏹ STOP", disabled=not is_running, width="stretch")
 
     with msg_col:
         if df is None:
