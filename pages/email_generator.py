@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from unidecode import unidecode
 
-MAX_FORMATS = 8
+MAX_FORMATS = 9
 SMTP_TIMEOUT = 10
 
 
@@ -37,6 +37,7 @@ def generate_emails(first_name, last_name, domain) -> list[str]:
             f"{f}{l[0]}@{d}",
             f"{f}.{l[0]}@{d}",
             f"{l}@{d}",
+            f"{f[0]}{l[0]}@{d}",
         ]
     elif f:
         emails = [f"{f}@{d}"]
@@ -104,6 +105,12 @@ def verify_emails_for_row(emails: list[str], domain: str) -> tuple[str, str]:
         elif status == "invalid":
             last_status = "invalid"
 
+    # Server actively rejects all probes (anti-harvesting) — return best-guess
+    # format anyway so the column isn't empty; mark as "blocked" to distinguish
+    # from a confirmed invalid address.
+    if last_status == "invalid":
+        return (emails[0], "blocked")
+
     return ("", last_status)
 
 
@@ -121,11 +128,11 @@ def run() -> None:
 
     if verify_mode:
         st.info(
-            "Verification statuses: **valid** — confirmed | "
-            "**invalid** — rejected by server | "
-            "**catch-all** — server accepts everything | "
+            "Verification statuses: **valid** — confirmed by server | "
+            "**blocked** — server rejects all probes (anti-spam), best-guess email shown | "
+            "**catch-all** — server accepts everything, best-guess shown | "
             "**no-mx** — domain has no MX records | "
-            "**unverified** — server blocked the check"
+            "**unverified** — connection failed / timeout"
         )
 
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
