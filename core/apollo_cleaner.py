@@ -48,13 +48,12 @@ APOLLO_COLUMNS = [
 ]
 
 FINAL_COLUMNS = [
-    "Company", "Website", "Industry", "Country", "State", "City",
-    "First name", "Last name", "Title", "Email",
+    "Company", "Company_Original", "Website", "Industry", "Country", "State", "City",
+    "First name", "Last name", "Title", "Title_Original", "Email",
     "Linkedin Person", "Linkedin Company", "Number of employees",
     "Person Country", "Person State", "Person City",
     "Empty_1", "Empty_2", "Empty_3", "Empty_4", "Empty_5",
     "Email_Domain_Match", "Apollo Contact Id", "Apollo Account Id",
-    "Company_Original", "Title_Original",
 ]
 
 _UMLAUT_MAP = str.maketrans({
