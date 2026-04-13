@@ -200,6 +200,9 @@ def run(
     # Insert Right Company Name after Company Name for Emails
     new_header.insert(company_idx + 1, "Right Company Name")
 
+    # Save pre-adjustment index for row placeholder insertions (must mirror header order)
+    title_idx_for_insert = title_idx
+
     # Adjust title_idx after company insertion if title comes after company
     if title_idx > company_idx:
         title_idx += 1  # shifted by Right Company Name insertion
@@ -222,9 +225,8 @@ def run(
     out_rows: list[list[str]] = []
     for row in data_rows:
         new_row = list(row)
-        # Insert Right Title placeholder after Title
-        new_row.insert(title_idx + 1, "")
-        # Insert Right Company Name placeholder after Company Name for Emails
+        # Mirror header insertion order: Right Title first (pre-adjustment index), then Right Company Name
+        new_row.insert(title_idx_for_insert + 1, "")
         new_row.insert(company_idx + 1, "")
         out_rows.append(new_row)
 
