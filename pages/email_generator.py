@@ -11,7 +11,12 @@ from unidecode import unidecode
 
 MAX_FORMATS = 9
 SMTP_TIMEOUT = 10
+EHLO_HOSTNAME = "google.com"
 
+
+# ---------------------------------------------------------------------------
+# Email pattern generation
+# ---------------------------------------------------------------------------
 
 def _clean(value) -> str:
     if not value or isinstance(value, float):
@@ -49,6 +54,10 @@ def generate_emails(first_name, last_name, domain) -> list[str]:
     return emails[:MAX_FORMATS]
 
 
+# ---------------------------------------------------------------------------
+# DNS
+# ---------------------------------------------------------------------------
+
 @st.cache_data(show_spinner=False)
 def get_mx_records(domain: str) -> list[str]:
     try:
@@ -59,11 +68,18 @@ def get_mx_records(domain: str) -> list[str]:
         return []
 
 
+# ---------------------------------------------------------------------------
+# SMTP — with STARTTLS + disguised EHLO
+# ---------------------------------------------------------------------------
+
 def smtp_check(email: str, mx_host: str, from_address: str = "verify@example.com") -> str:
     try:
         with smtplib.SMTP(timeout=SMTP_TIMEOUT) as smtp:
             smtp.connect(mx_host, 25)
-            smtp.ehlo_or_helo_if_needed()
+            smtp.ehlo(EHLO_HOSTNAME)
+            if smtp.has_extn("STARTTLS"):
+                smtp.starttls()
+                smtp.ehlo(EHLO_HOSTNAME)
             smtp.mail(from_address)
             code, _ = smtp.rcpt(email)
             if code == 250:
@@ -84,59 +100,80 @@ def is_catch_all(domain: str, mx_host: str) -> bool:
     return smtp_check(fake, mx_host) == "valid"
 
 
-def verify_emails_for_row(emails: list[str], domain: str) -> tuple[str, str]:
+# ---------------------------------------------------------------------------
+# Verification with pattern caching
+# ---------------------------------------------------------------------------
+
+def verify_row(
+    emails: list[str],
+    domain: str,
+    pattern_cache: dict[str, int],
+) -> tuple[str, str]:
+    """
+    Returns (best_email, status).
+
+    pattern_cache maps domain → index of the confirmed working pattern.
+    On a cache hit the function returns instantly without any SMTP call.
+    """
     if not emails:
-        return ("", "unverified")
+        return "", "unverified"
 
     mx_list = get_mx_records(domain)
     if not mx_list:
-        return ("", "no-mx")
+        return "", "no-mx"
 
     mx = mx_list[0]
 
     if is_catch_all(domain, mx):
-        return (emails[0], "catch-all")
+        # Pick cached pattern if available, otherwise pattern 0
+        idx = pattern_cache.get(domain, 0)
+        idx = min(idx, len(emails) - 1)
+        return emails[idx], "catch-all"
 
+    # Cache hit — skip SMTP entirely
+    if domain in pattern_cache:
+        idx = min(pattern_cache[domain], len(emails) - 1)
+        return emails[idx], "valid"
+
+    # Full probe
     last_status = "unverified"
-    for email in emails:
+    for i, email in enumerate(emails):
         status = smtp_check(email, mx)
         if status == "valid":
-            return (email, "valid")
+            pattern_cache[domain] = i
+            return email, "valid"
         elif status == "invalid":
             last_status = "invalid"
 
-    # Server actively rejects all probes (anti-harvesting) — return best-guess
-    # format anyway so the column isn't empty; mark as "blocked" to distinguish
-    # from a confirmed invalid address.
     if last_status == "invalid":
-        return (emails[0], "blocked")
+        return emails[0], "blocked"
 
-    return ("", last_status)
+    return "", last_status
 
+
+# ---------------------------------------------------------------------------
+# Streamlit UI
+# ---------------------------------------------------------------------------
 
 def run() -> None:
     st.title("Email Generator 📧")
     st.caption(
-        "Upload a CSV with **FirstName**, **LastName**, **Domain** columns → "
-        "generate probable corporate email formats → optional SMTP verification → download."
+        "Upload a CSV with **FirstName**, **LastName**, **Domain** columns — "
+        "the tool generates all probable email patterns, probes each domain via SMTP, "
+        "and returns one verified address per contact."
     )
 
-    verify_mode = st.checkbox(
-        "Run SMTP verification (slower, but filters out invalid addresses)",
-        value=True,
-    )
-
-    if verify_mode:
-        st.info(
-            "Verification statuses: **valid** — confirmed by server | "
-            "**blocked** — server rejects all probes (anti-spam), best-guess email shown | "
-            "**catch-all** — server accepts everything, best-guess shown | "
-            "**no-mx** — domain has no MX records | "
-            "**unverified** — connection failed / timeout"
+    with st.expander("Status legend", expanded=False):
+        st.markdown(
+            "- **valid** — confirmed by server  \n"
+            "- **catch-all** — server accepts everything, best-guess shown  \n"
+            "- **blocked** — server rejects all probes (anti-spam), best-guess shown  \n"
+            "- **no-mx** — domain has no MX records  \n"
+            "- **unverified** — connection failed / timeout  \n"
+            "- **skipped** — contact already had an email in the source file"
         )
 
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-
     if uploaded_file is None:
         return
 
@@ -149,68 +186,78 @@ def run() -> None:
     required_cols = {"FirstName", "LastName", "Domain"}
     missing = required_cols - set(df.columns)
     if missing:
-        st.error(f"Missing required columns: {', '.join(missing)}")
+        st.error(f"Missing columns: {', '.join(sorted(missing))}")
         return
 
-    st.info(f"Loaded rows: **{len(df)}**")
+    st.info(f"Loaded **{len(df)}** rows.")
 
-    if not st.button("Generate emails", type="primary"):
+    if not st.button("Generate & Verify", type="primary"):
         return
 
-    for i in range(1, MAX_FORMATS + 1):
-        col_name = f"Generated_Email_{i}"
-        if col_name not in df.columns:
-            df[col_name] = ""
+    # Per-session pattern cache persists across re-runs (same session)
+    if "pattern_cache" not in st.session_state:
+        st.session_state.pattern_cache = {}
+    pattern_cache: dict[str, int] = st.session_state.pattern_cache
 
-    if verify_mode:
-        df["Verified_Email"] = ""
-        df["Email_Status"] = ""
-
-    progress = st.progress(0, text="Processing rows…")
     total = len(df)
+    real_emails: list[str] = []
+    statuses: list[str] = []
+
+    progress = st.progress(0, text="Starting…")
 
     for idx, row in df.iterrows():
-        if "Email" in df.columns:
-            existing = row.get("Email", "")
-            if pd.notna(existing) and str(existing).strip():
-                progress.progress(
-                    (idx + 1) / total,
-                    text=f"Row {idx + 1} of {total} — skipped (email exists)",
-                )
-                continue
+        row_num = int(str(idx)) + 1  # type: ignore[arg-type]
+
+        existing = row.get("Email", "") if "Email" in df.columns else ""
+        if pd.notna(existing) and str(existing).strip():
+            real_emails.append(str(existing).strip())
+            statuses.append("skipped")
+            progress.progress(row_num / total, text=f"Row {row_num}/{total} — skipped")
+            continue
 
         domain = str(row["Domain"]).strip() if pd.notna(row["Domain"]) else ""
         emails = generate_emails(row["FirstName"], row["LastName"], domain)
 
-        for i, email in enumerate(emails, start=1):
-            df.at[idx, f"Generated_Email_{i}"] = email
+        if not emails or not domain:
+            real_emails.append("")
+            statuses.append("unverified")
+            progress.progress(row_num / total, text=f"Row {row_num}/{total} — no domain")
+            continue
 
-        if verify_mode and emails and domain:
-            progress.progress(
-                (idx + 1) / total,
-                text=f"Row {idx + 1} of {total} — verifying {domain}…",
-            )
-            best_email, status = verify_emails_for_row(emails, domain)
-            df.at[idx, "Verified_Email"] = best_email
-            df.at[idx, "Email_Status"] = status
-        else:
-            progress.progress((idx + 1) / total, text=f"Row {idx + 1} of {total}")
+        cached = domain in pattern_cache
+        label = f"Row {row_num}/{total} — {'cached ⚡' if cached else f'probing {domain}…'}"
+        progress.progress(row_num / total, text=label)
+
+        email, status = verify_row(emails, domain, pattern_cache)
+        real_emails.append(email)
+        statuses.append(status)
 
     progress.empty()
-    st.success(f"Done! Processed rows: {total}")
 
-    if verify_mode and "Email_Status" in df.columns:
-        st.subheader("Verification stats")
-        stats = df["Email_Status"].value_counts().rename_axis("Status").reset_index(name="Count")
-        st.dataframe(stats, use_container_width=True)
+    # Build output — keep only source columns + two new ones
+    out = df.copy()
+    out["Real_Email"] = real_emails
+    out["Status"] = statuses
+
+    st.success(f"Done — {total} rows processed, {len(pattern_cache)} domain patterns cached.")
+
+    st.subheader("Verification stats")
+    stats = (
+        pd.Series(statuses, name="Count")
+        .value_counts()
+        .rename_axis("Status")
+        .reset_index()
+    )
+    st.dataframe(stats, use_container_width=True)
 
     st.subheader("Preview (first 10 rows)")
-    st.dataframe(df.head(10), use_container_width=True)
+    st.dataframe(out[["FirstName", "LastName", "Domain", "Real_Email", "Status"]].head(10),
+                 use_container_width=True)
 
-    csv_buffer = df.to_csv(index=False).encode("utf-8")
+    csv_buffer = out.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="Download result (CSV)",
         data=csv_buffer,
-        file_name="emails_generated.csv",
+        file_name="emails_verified.csv",
         mime="text/csv",
     )

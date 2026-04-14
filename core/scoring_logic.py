@@ -101,26 +101,20 @@ def step1_apollo(
     icp_description: str,
     short_description: str,
     technologies: str,
-    keywords: str,
+    keywords: str,  # kept for signature compatibility, no longer sent to LLM
 ) -> tuple[str, str, str, int, int]:
     """Returns (status, reason, source, input_tokens, output_tokens)."""
-    has_any = any(
-        str(x).strip()
-        for x in (short_description, technologies, keywords)
-        if x is not None and str(x).strip() and str(x).lower() != "nan"
-    )
-    if not has_any:
-        return "MAYBE", "No Apollo description/technologies/keywords", "Apollo_Data", 0, 0
+    desc = str(short_description).strip() if short_description else ""
+    if not desc or desc.lower() == "nan":
+        return "MAYBE", "No Apollo description", "Apollo_Data", 0, 0
 
     prompt = f"""You are a senior B2B sales researcher qualifying companies for a sales pipeline.
 
 ICP (Ideal Customer Profile) criteria:
 {icp_description}
 
-Company data from Apollo export:
-- Short Description: {short_description or "(empty)"}
-- Technologies: {technologies or "(empty)"}
-- Keywords: {keywords or "(empty)"}
+Company description from Apollo:
+{desc}
 
 Based only on the above, does this company match the ICP?"""
 
@@ -131,7 +125,7 @@ Based only on the above, does this company match the ICP?"""
     return data["status"], data["reason"], "Apollo_Data", in_tok, out_tok
 
 
-def fetch_website_text(url: str, max_chars: int = 3000) -> tuple[str | None, str | None]:
+def fetch_website_text(url: str, max_chars: int = 1500) -> tuple[str | None, str | None]:
     """Fetch plain text from a URL using requests + BeautifulSoup."""
     if not url or not str(url).strip() or str(url).lower() in ("nan", "none"):
         return None, "empty URL"
@@ -292,14 +286,7 @@ def score_company_row(
     total_in += in_tok
     total_out += out_tok
 
-    if status in ("YES", "NO"):
-        return {"ICP_Status": status, "Reason": reason, "Data_Source": source}, (total_in, total_out)
-
-    # Still MAYBE or website failed → step 3
-    status, reason, source, in_tok, out_tok = step3_ddg(api_key, icp_description, company_name, linkedin)
-    total_in += in_tok
-    total_out += out_tok
-
+    # Step 2 result is final — no DDG fallback
     return {"ICP_Status": status, "Reason": reason, "Data_Source": source}, (total_in, total_out)
 
 

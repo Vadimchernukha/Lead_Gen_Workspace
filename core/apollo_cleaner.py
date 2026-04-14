@@ -101,12 +101,90 @@ def _fix_caps(name: str) -> str:
     return " ".join(result)
 
 
+def _fix_camel_case(name: str) -> str:
+    """Insert spaces at camelCase/PascalCase word boundaries."""
+    if not name or len(name) <= 4:
+        return name
+    # aB → a B
+    result = re.sub(r'(?<=[a-z\d])(?=[A-Z])', ' ', name)
+    # ABCDef → ABC Def  (capturing group replaces variable-width lookbehind)
+    result = re.sub(r'([A-Z]{2,})([A-Z][a-z])', r'\1 \2', result)
+    return re.sub(r' {2,}', ' ', result).strip()
+
+
+def _ensure_first_capital(name: str) -> str:
+    """Capitalize company names that are erroneously all-lowercase."""
+    if not name:
+        return name
+    letters = [c for c in name if c.isalpha()]
+    if not letters:
+        return name
+    lower_ratio = sum(c.islower() for c in letters) / len(letters)
+    if lower_ratio < 0.9:
+        return name
+    words = name.split()
+    if len(words) > 1:
+        # Multi-word all-lowercase → Title Case every word
+        return name.title()
+    if len(name) > 5:
+        # Long single-word (e.g. "techcorp") → capitalize first letter only
+        return name[0].upper() + name[1:]
+    # Short single-word (≤5 chars, e.g. intentional "knoell"-style) → leave as-is
+    return name
+
+
 def clean_company_text(name: str) -> str:
-    return _transliterate(_fix_caps(str(name) if name else ""))
+    if not name:
+        return ""
+    name = str(name).strip()
+    name = _fix_caps(name)
+    name = _fix_camel_case(name)
+    name = _ensure_first_capital(name)
+    return _transliterate(name)
+
+
+# ---------------------------------------------------------------------------
+# Title priority helpers
+# ---------------------------------------------------------------------------
+
+_TITLE_PRIORITY: dict[str, int] = {
+    "ceo": 1, "cto": 1, "cfo": 1, "coo": 1, "cmo": 1, "cro": 1, "cpo": 1,
+    "cio": 1, "cdo": 1, "cso": 1, "chro": 1, "cco": 1,
+    "managing director": 2, "md": 2,
+    "director": 3,
+    "head": 4,
+    "vp": 5, "svp": 5, "evp": 5, "vice president": 5,
+    "owner": 6, "co-owner": 6, "proprietor": 6,
+}
+
+
+def _title_tier(title: str) -> int:
+    t = title.lower().strip()
+    if t in _TITLE_PRIORITY:
+        return _TITLE_PRIORITY[t]
+    for kw, tier in _TITLE_PRIORITY.items():
+        if t.startswith(kw + " ") or t == kw:
+            return tier
+    return 99
+
+
+def _pick_highest_title(title: str) -> str:
+    """When a title contains multiple roles, keep only the most senior one."""
+    if not title:
+        return title
+    parts = re.split(r'\s*/\s*|\s+and\s+|\s*&\s*|\s*,\s*', title, flags=re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) <= 1:
+        return title
+    return min(parts, key=_title_tier)
 
 
 def clean_title_text(title: str) -> str:
-    return _transliterate(str(title) if title else "")
+    if not title:
+        return ""
+    title = _transliterate(str(title))
+    title = _pick_highest_title(title)
+    return title
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +394,8 @@ RULES (apply every rule to every input):
    (e.g. "Schobertechnologies" → "Schober Technologies",
    "ControlTech" → "Control Tech").
    Do NOT split intentional brand stylisations like "AstroNova", "PinMeTo", "knoell".
+5a. If the result starts with a lowercase letter and is NOT a known stylised brand,
+    capitalise the first letter (e.g. "acme packaging" → "Acme Packaging").
 6. Convert umlauts/diacritics to plain ASCII:
    ö→oe, ü→ue, ä→ae, ß→ss, ø→oe, å→a, æ→ae, é/è/ê→e, ç→c.
 7. Preserve stylised lower-case brands (knoell, iPhone).
@@ -344,8 +424,14 @@ RULES:
    Geschäftsführer → Managing Director, Produktmanager → Product Manager,
    Algemeen directeur → Managing Director, Teknisk Direktör → Technical Director,
    GF → Managing Director, Inhaber → Owner.
-5. Resolve slash/combo titles to the most senior role
-   (e.g. "VP / CFO / Treasurer" → "CFO").
+5. When a title contains multiple roles (separated by '/', ',', '&', or 'and'),
+   output ONLY the single most senior role using this strict priority:
+   C-level (CEO/CTO/CFO/COO/CMO/CRO/CPO/CIO/CDO) > Managing Director > Director
+   > Head > VP/SVP/EVP > Owner > everything else.
+   Examples: "Co-founder and CEO" → "CEO",
+             "VP / CFO / Treasurer" → "CFO",
+             "Director & Co-founder" → "Director",
+             "Owner and Managing Director" → "Managing Director".
 
 Examples (original → cleaned):
 {json.dumps(examples, ensure_ascii=False, indent=2)}
