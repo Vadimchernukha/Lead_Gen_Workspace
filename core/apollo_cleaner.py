@@ -51,7 +51,7 @@ FINAL_COLUMNS = [
     "Company", "Company_Original", "Website", "Industry", "Country", "State", "City",
     "First name", "Last name", "Title", "Title_Original", "Email",
     "Linkedin Person", "Linkedin Company", "Number of employees",
-    "Person Country", "Person State", "Person City",
+    "Company Country", "Company State", "Company City",
     "Empty_1", "Empty_2", "Empty_3", "Empty_4", "Empty_5",
     "Email_Domain_Match", "Apollo Contact Id", "Apollo Account Id",
 ]
@@ -628,9 +628,9 @@ def rename_and_reorder(df: pd.DataFrame) -> pd.DataFrame:
     out["Company"]           = df["Company_Clean"]
     out["Website"]           = df["Website"]
     out["Industry"]          = df["Industry"]
-    out["Country"]           = df["Company Country"]
-    out["State"]             = df["Company State"]
-    out["City"]              = df["Company City"]
+    out["Country"]           = df["Country"]
+    out["State"]             = df["State"]
+    out["City"]              = df["City"]
     out["First name"]        = df["First Name"]
     out["Last name"]         = df["Last Name"]
     out["Title"]             = df["Title_Clean"]
@@ -638,9 +638,9 @@ def rename_and_reorder(df: pd.DataFrame) -> pd.DataFrame:
     out["Linkedin Person"]   = df["Person Linkedin Url"]
     out["Linkedin Company"]  = df["Company Linkedin Url"]
     out["Number of employees"] = df["# Employees"]
-    out["Person Country"]    = df["Country"]
-    out["Person State"]      = df["State"]
-    out["Person City"]       = df["City"]
+    out["Company Country"]   = df["Company Country"]
+    out["Company State"]     = df["Company State"]
+    out["Company City"]      = df["Company City"]
     out["Empty_1"]           = ""
     out["Empty_2"]           = ""
     out["Empty_3"]           = ""
