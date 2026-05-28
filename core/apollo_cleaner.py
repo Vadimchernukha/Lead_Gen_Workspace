@@ -56,6 +56,54 @@ FINAL_COLUMNS = [
     "Email_Domain_Match", "Apollo Contact Id", "Apollo Account Id",
 ]
 
+# ---------------------------------------------------------------------------
+# Country → capital mapping (used to fill missing city fields)
+# ---------------------------------------------------------------------------
+
+COUNTRY_CAPITALS: dict[str, str] = {
+    "afghanistan": "Kabul", "albania": "Tirana", "algeria": "Algiers",
+    "andorra": "Andorra la Vella", "angola": "Luanda", "argentina": "Buenos Aires",
+    "armenia": "Yerevan", "australia": "Canberra", "austria": "Vienna",
+    "azerbaijan": "Baku", "bahrain": "Manama", "bangladesh": "Dhaka",
+    "belarus": "Minsk", "belgium": "Brussels", "bolivia": "Sucre",
+    "bosnia and herzegovina": "Sarajevo", "brazil": "Brasilia", "bulgaria": "Sofia",
+    "cambodia": "Phnom Penh", "cameroon": "Yaounde", "canada": "Ottawa",
+    "chile": "Santiago", "china": "Beijing", "colombia": "Bogota",
+    "costa rica": "San Jose", "croatia": "Zagreb", "cuba": "Havana",
+    "cyprus": "Nicosia", "czech republic": "Prague", "czechia": "Prague",
+    "denmark": "Copenhagen", "ecuador": "Quito", "egypt": "Cairo",
+    "estonia": "Tallinn", "ethiopia": "Addis Ababa", "finland": "Helsinki",
+    "france": "Paris", "georgia": "Tbilisi", "germany": "Berlin",
+    "ghana": "Accra", "greece": "Athens", "guatemala": "Guatemala City",
+    "hungary": "Budapest", "iceland": "Reykjavik", "india": "New Delhi",
+    "indonesia": "Jakarta", "iran": "Tehran", "iraq": "Baghdad",
+    "ireland": "Dublin", "israel": "Tel Aviv", "italy": "Rome",
+    "japan": "Tokyo", "jordan": "Amman", "kazakhstan": "Astana",
+    "kenya": "Nairobi", "kosovo": "Pristina", "kuwait": "Kuwait City",
+    "latvia": "Riga", "lebanon": "Beirut", "libya": "Tripoli",
+    "liechtenstein": "Vaduz", "lithuania": "Vilnius", "luxembourg": "Luxembourg",
+    "malaysia": "Kuala Lumpur", "malta": "Valletta", "mexico": "Mexico City",
+    "moldova": "Chisinau", "monaco": "Monaco", "montenegro": "Podgorica",
+    "morocco": "Rabat", "netherlands": "Amsterdam", "new zealand": "Wellington",
+    "nigeria": "Abuja", "north korea": "Pyongyang", "north macedonia": "Skopje",
+    "norway": "Oslo", "oman": "Muscat", "pakistan": "Islamabad",
+    "panama": "Panama City", "paraguay": "Asuncion", "peru": "Lima",
+    "philippines": "Manila", "poland": "Warsaw", "portugal": "Lisbon",
+    "qatar": "Doha", "romania": "Bucharest", "russia": "Moscow",
+    "russian federation": "Moscow", "saudi arabia": "Riyadh", "serbia": "Belgrade",
+    "singapore": "Singapore", "slovakia": "Bratislava", "slovenia": "Ljubljana",
+    "south africa": "Pretoria", "south korea": "Seoul", "spain": "Madrid",
+    "sri lanka": "Colombo", "sweden": "Stockholm", "switzerland": "Bern",
+    "taiwan": "Taipei", "thailand": "Bangkok", "tunisia": "Tunis",
+    "turkey": "Ankara", "turkiye": "Ankara", "ukraine": "Kyiv",
+    "united arab emirates": "Abu Dhabi", "uae": "Abu Dhabi",
+    "united kingdom": "London", "uk": "London",
+    "united states": "New York", "united states of america": "New York",
+    "usa": "New York", "us": "New York",
+    "uruguay": "Montevideo", "uzbekistan": "Tashkent", "venezuela": "Caracas",
+    "vietnam": "Hanoi", "yemen": "Sanaa", "zimbabwe": "Harare",
+}
+
 _UMLAUT_MAP = str.maketrans({
     "ä": "ae", "Ä": "Ae",
     "ö": "oe", "Ö": "Oe",
@@ -345,6 +393,37 @@ def apply_industry_mapping(df: pd.DataFrame, mapping: dict[str, str]) -> pd.Data
         return mapping.get(str(val).strip().lower(), val)
     df["Industry"] = df["Industry"].apply(_map)
     return df
+
+
+# ---------------------------------------------------------------------------
+# Step 5b — Fill missing cities with country capital
+# ---------------------------------------------------------------------------
+
+def _is_empty_val(val) -> bool:
+    return pd.isna(val) or not str(val).strip()
+
+
+def fill_missing_cities(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    def _capital(country_val) -> str:
+        if _is_empty_val(country_val):
+            return ""
+        return COUNTRY_CAPITALS.get(str(country_val).strip().lower(), "")
+
+    filled = 0
+
+    mask = df["City"].apply(_is_empty_val)
+    capitals = df.loc[mask, "Country"].apply(_capital)
+    non_empty = capitals[capitals != ""]
+    df.loc[non_empty.index, "City"] = non_empty
+    filled += len(non_empty)
+
+    mask = df["Company City"].apply(_is_empty_val)
+    capitals = df.loc[mask, "Company Country"].apply(_capital)
+    non_empty = capitals[capitals != ""]
+    df.loc[non_empty.index, "Company City"] = non_empty
+    filled += len(non_empty)
+
+    return df, filled
 
 
 # ---------------------------------------------------------------------------
@@ -707,6 +786,9 @@ def run(
     industry_map = load_industry_mapping()
     df = apply_industry_mapping(df, industry_map)
     _log(f"Industry mapping applied ({len(industry_map)} rules).")
+
+    df, cities_filled = fill_missing_cities(df)
+    _log(f"Missing cities filled with country capital: {cities_filled} cell(s).")
 
     content_hash = hashlib.md5(data).hexdigest()[:12]
 
