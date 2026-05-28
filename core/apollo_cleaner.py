@@ -57,8 +57,11 @@ FINAL_COLUMNS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Country → capital mapping (used to fill missing city fields)
+# Country → capital city + capital region/state mappings
+# USA is intentionally excluded — left for manual fill.
 # ---------------------------------------------------------------------------
+
+_USA_KEYS = {"united states", "united states of america", "usa", "us"}
 
 COUNTRY_CAPITALS: dict[str, str] = {
     "afghanistan": "Kabul", "albania": "Tirana", "algeria": "Algiers",
@@ -98,10 +101,58 @@ COUNTRY_CAPITALS: dict[str, str] = {
     "turkey": "Ankara", "turkiye": "Ankara", "ukraine": "Kyiv",
     "united arab emirates": "Abu Dhabi", "uae": "Abu Dhabi",
     "united kingdom": "London", "uk": "London",
-    "united states": "New York", "united states of america": "New York",
-    "usa": "New York", "us": "New York",
     "uruguay": "Montevideo", "uzbekistan": "Tashkent", "venezuela": "Caracas",
     "vietnam": "Hanoi", "yemen": "Sanaa", "zimbabwe": "Harare",
+}
+
+# Country → region / state / province of the capital city
+COUNTRY_CAPITAL_STATES: dict[str, str] = {
+    "afghanistan": "Kabul", "albania": "Tirana", "algeria": "Algiers",
+    "andorra": "Andorra la Vella", "angola": "Luanda", "argentina": "Buenos Aires",
+    "armenia": "Yerevan", "australia": "Australian Capital Territory",
+    "austria": "Vienna", "azerbaijan": "Baku", "bahrain": "Capital Governorate",
+    "bangladesh": "Dhaka", "belarus": "Minsk", "belgium": "Brussels-Capital Region",
+    "bolivia": "Chuquisaca", "bosnia and herzegovina": "Federation of Bosnia and Herzegovina",
+    "brazil": "Federal District", "bulgaria": "Sofia-City",
+    "cambodia": "Phnom Penh", "cameroon": "Centre", "canada": "Ontario",
+    "chile": "Santiago Metropolitan", "china": "Beijing",
+    "colombia": "Cundinamarca", "costa rica": "San Jose",
+    "croatia": "City of Zagreb", "cuba": "La Habana",
+    "cyprus": "Nicosia", "czech republic": "Prague", "czechia": "Prague",
+    "denmark": "Capital Region of Denmark", "ecuador": "Pichincha",
+    "egypt": "Cairo", "estonia": "Harju", "ethiopia": "Addis Ababa",
+    "finland": "Uusimaa", "france": "Ile-de-France", "georgia": "Tbilisi",
+    "germany": "Berlin", "ghana": "Greater Accra", "greece": "Attica",
+    "guatemala": "Guatemala", "hungary": "Budapest", "iceland": "Capital Region",
+    "india": "Delhi", "indonesia": "Jakarta", "iran": "Tehran",
+    "iraq": "Baghdad", "ireland": "Leinster", "israel": "Tel Aviv District",
+    "italy": "Lazio", "japan": "Tokyo", "jordan": "Amman",
+    "kazakhstan": "Astana", "kenya": "Nairobi", "kosovo": "Pristina",
+    "kuwait": "Al Asimah", "latvia": "Riga", "lebanon": "Beirut",
+    "libya": "Tripoli", "liechtenstein": "Vaduz", "lithuania": "Vilnius",
+    "luxembourg": "Luxembourg", "malaysia": "Federal Territory of Kuala Lumpur",
+    "malta": "Southern Harbour", "mexico": "Mexico City",
+    "moldova": "Chisinau", "monaco": "Monaco", "montenegro": "Podgorica",
+    "morocco": "Rabat-Sale-Kenitra", "netherlands": "North Holland",
+    "new zealand": "Wellington", "nigeria": "Federal Capital Territory",
+    "north korea": "Pyongyang", "north macedonia": "Skopje",
+    "norway": "Oslo", "oman": "Muscat", "pakistan": "Islamabad Capital Territory",
+    "panama": "Panama", "paraguay": "Central", "peru": "Lima",
+    "philippines": "Metro Manila", "poland": "Masovian", "portugal": "Lisbon",
+    "qatar": "Doha", "romania": "Bucharest", "russia": "Moscow",
+    "russian federation": "Moscow", "saudi arabia": "Riyadh",
+    "serbia": "Belgrade", "singapore": "Singapore",
+    "slovakia": "Bratislava", "slovenia": "Ljubljana",
+    "south africa": "Gauteng", "south korea": "Seoul",
+    "spain": "Community of Madrid", "sri lanka": "Western",
+    "sweden": "Stockholm County", "switzerland": "Bern",
+    "taiwan": "Taipei", "thailand": "Bangkok",
+    "tunisia": "Tunis", "turkey": "Ankara", "turkiye": "Ankara",
+    "ukraine": "Kyiv", "united arab emirates": "Abu Dhabi", "uae": "Abu Dhabi",
+    "united kingdom": "England", "uk": "England",
+    "uruguay": "Montevideo", "uzbekistan": "Tashkent",
+    "venezuela": "Capital District", "vietnam": "Hanoi",
+    "yemen": "Amanat Al Asimah", "zimbabwe": "Harare",
 }
 
 _UMLAUT_MAP = str.maketrans({
@@ -403,24 +454,49 @@ def _is_empty_val(val) -> bool:
     return pd.isna(val) or not str(val).strip()
 
 
+def _is_usa(country_val) -> bool:
+    return str(country_val).strip().lower() in _USA_KEYS
+
+
 def fill_missing_cities(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     def _capital(country_val) -> str:
-        if _is_empty_val(country_val):
+        if _is_empty_val(country_val) or _is_usa(country_val):
             return ""
         return COUNTRY_CAPITALS.get(str(country_val).strip().lower(), "")
 
+    def _state(country_val) -> str:
+        if _is_empty_val(country_val) or _is_usa(country_val):
+            return ""
+        return COUNTRY_CAPITAL_STATES.get(str(country_val).strip().lower(), "")
+
     filled = 0
 
+    # Person City
     mask = df["City"].apply(_is_empty_val)
     capitals = df.loc[mask, "Country"].apply(_capital)
     non_empty = capitals[capitals != ""]
     df.loc[non_empty.index, "City"] = non_empty
     filled += len(non_empty)
 
+    # Person State
+    mask = df["State"].apply(_is_empty_val)
+    states = df.loc[mask, "Country"].apply(_state)
+    non_empty = states[states != ""]
+    df.loc[non_empty.index, "State"] = non_empty
+    filled += len(non_empty)
+
+    # Company City
     mask = df["Company City"].apply(_is_empty_val)
     capitals = df.loc[mask, "Company Country"].apply(_capital)
     non_empty = capitals[capitals != ""]
     df.loc[non_empty.index, "Company City"] = non_empty
+    filled += len(non_empty)
+
+    # Company State
+    mask = df["Company State"].apply(_is_empty_val)
+    states = df.loc[mask, "Company Country"].apply(_state)
+    non_empty = states[states != ""]
+    df.loc[non_empty.index, "Company State"] = non_empty
     filled += len(non_empty)
 
     return df, filled
