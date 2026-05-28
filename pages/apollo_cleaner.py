@@ -34,19 +34,39 @@ def run() -> None:
     # File upload
     # -------------------------------------------------------------------------
 
-    uploaded = st.file_uploader("Upload Apollo CSV export", type=["csv"])
+    uploaded_files = st.file_uploader(
+        "Upload Apollo CSV export(s)",
+        type=["csv"],
+        accept_multiple_files=True,
+    )
 
-    if uploaded:
-        raw_bytes = uploaded.read()
-        try:
-            preview_df = pd.read_csv(io.BytesIO(raw_bytes), dtype=str, nrows=5)
-            with st.expander("Preview (first 5 rows)", expanded=False):
-                st.dataframe(preview_df, width="stretch")
-        except Exception:
-            st.warning("Could not preview file.")
+    if uploaded_files:
+        dfs = []
+        bad = []
+        for f in uploaded_files:
+            try:
+                dfs.append(pd.read_csv(io.BytesIO(f.read()), dtype=str, low_memory=False))
+            except Exception:
+                bad.append(f.name)
+
+        if bad:
+            st.warning(f"Could not read: {', '.join(bad)}")
+
+        if not dfs:
+            st.stop()
+
+        combined_df = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
+
+        if len(uploaded_files) > 1:
+            st.info(f"{len(uploaded_files)} files merged → {len(combined_df)} total rows before deduplication.")
+
+        raw_bytes = combined_df.to_csv(index=False).encode("utf-8-sig")
+
+        with st.expander("Preview (first 5 rows)", expanded=False):
+            st.dataframe(combined_df.head(5), use_container_width=True)
 
         st.divider()
-        run_btn = st.button("▶ Run Pipeline", type="primary", width="stretch")
+        run_btn = st.button("▶ Run Pipeline", type="primary", use_container_width=True)
 
         if run_btn:
             effective_key = api_key.strip() if step_llm else None
@@ -79,7 +99,7 @@ def run() -> None:
                     c3.metric("Email/domain match", domain_matches)
 
                     st.subheader("Preview (first 10 rows)")
-                    st.dataframe(final_df.head(10), width="stretch")
+                    st.dataframe(final_df.head(10), use_container_width=True)
 
                     csv_bytes = final_df.to_csv(index=False).encode("utf-8-sig")
                     st.download_button(
@@ -87,7 +107,7 @@ def run() -> None:
                         data=csv_bytes,
                         file_name="cleaned_apollo_contacts.csv",
                         mime="text/csv",
-                        width="stretch",
+                        use_container_width=True,
                     )
 
                 except Exception as exc:
