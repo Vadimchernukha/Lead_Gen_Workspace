@@ -35,9 +35,12 @@ Finance:
       - '(chief|vp|vice president|director|head).{0,35}engineering'
       # Analytics leadership
       - '(chief|vp|vice president|director|head).{0,35}analytics'
+      # "Head of Technical" / "Director of Technical" — when technical is the last meaningful word
+      # (excludes "Head of Technical Claims", "Head of Technical Support" etc. via comma/end-of-string anchor)
+      - '(head|director|vp|vice president|chief).{0,10}technical(?:\s*[,&(]|\s*$)'
     medium:
-      # CEO / President / GM / MD
-      - '\bceo\b|chief executive officer|\bpresident\b|general manager|managing director'
+      # CEO / President / GM (General Manager abbreviation) / MD
+      - '\bceo\b|chief executive officer|\bpresident\b|general manager|\bgm\b|managing director'
       # COO / Head of Operations
       - '\bcoo\b|chief operating officer'
       - '(vp|vice president|director|head).{0,35}operations'
@@ -45,16 +48,20 @@ Finance:
       - '(chief|vp|vice president|director|head).{0,35}(delivery|development|r&d|research and development|transformation|strategy)'
       # Chief Development Officer (CDO) — note: Chief DATA Officer is High via data engineering pattern
       - '\bcdo\b|chief development officer'
+      # Technical Program / Programme Management (Director/Head level)
+      - '(director|head|vp|vice president|chief).{0,35}(technical program|technical programme)'
       # Product
       - '\bcpo\b|chief product officer'
       - '(vp|vice president|director|head|chief).{0,35}product'
       - 'product\s+(owner|manager)'
+      # Standalone Director (senior level, function unknown after LLM cleanup)
+      - '^director$'
     low:
       # Founders and co-owners only — "Platform Owner", "Case Owner" etc. are NOT company owners
       - '\bfounder\b|co-?founder|co founder'
       - '\bco-?owner\b|co owner'
-      # Standalone "Owner" title only (not "Platform Owner", "Technical Owner", etc.)
-      - '^owner$'
+      # Standalone "Owner" or "Business Owner" = company owner
+      - '^owner$|^business owner$'
 
 B2B_SaaS:
   description: "B2B SaaS — Engineering, Product, Data leadership"
