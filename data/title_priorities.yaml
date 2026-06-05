@@ -22,6 +22,10 @@ Finance:
       # CISO / Information Security / Data Privacy / Security Risk
       - '\bciso\b|chief information security officer'
       - '(vp|vice president|director|head|chief).{0,35}(information security|cybersecurity|cyber security|infosec|info sec|data privacy|security risk)'
+      # "Head of Security" / "VP of Security" (LLM may strip "Information" qualifier)
+      - '(vp|vice president|director|head|chief).{0,20}security'
+      # "Manager of Technology" (LLM reformats "Technology Manager" → "Manager of Technology")
+      - 'manager.{0,5}of.{0,10}(technology|information technology)'
       # CAO — Chief Analytics Officer (abbreviation)
       - '\bcao\b|chief analytics officer'
       # CIO / Head of IT (excluding Operations/Infrastructure)
