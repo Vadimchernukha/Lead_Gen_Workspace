@@ -17,9 +17,11 @@ Finance:
       # Technical / Technology Manager
       - 'technolog(y|ical)?\s+(manager|director|lead|officer)'
       - 'technical\s+(manager|director|lead|officer)'
-      # CISO / Information Security
+      # Solutions / Enterprise / Technical Architecture
+      - '(vp|vice president|director|head|chief).{0,40}(solutions architecture|enterprise architecture|technical architecture)'
+      # CISO / Information Security / Data Privacy
       - '\bciso\b|chief information security officer'
-      - '(vp|vice president|director|head|chief).{0,35}(information security|cybersecurity|cyber security|infosec|info sec)'
+      - '(vp|vice president|director|head|chief).{0,35}(information security|cybersecurity|cyber security|infosec|info sec|data privacy)'
       # CIO / Head of IT (excluding Operations/Infrastructure)
       - '\bcio\b|chief information officer'
       - '(vp|vice president|director|head|chief).{0,35}\bit\b(?!.{0,40}(operations|infrastructure|infra))'
@@ -35,13 +37,18 @@ Finance:
       - '(vp|vice president|director|head).{0,35}operations'
       # Delivery / Development / R&D / Transformation / Strategy (tech-focused)
       - '(chief|vp|vice president|director|head).{0,35}(delivery|development|r&d|research and development|transformation|strategy)'
+      # Chief Development Officer (CDO) — note: Chief DATA Officer is High via data engineering pattern
+      - '\bcdo\b|chief development officer'
       # Product
       - '\bcpo\b|chief product officer'
       - '(vp|vice president|director|head|chief).{0,35}product'
       - 'product\s+(owner|manager)'
     low:
-      # Founders / Owners (only when no higher match found)
-      - '\bfounder\b|co-founder|co founder|\bowner\b|co-owner|co owner'
+      # Founders and co-owners only — "Platform Owner", "Case Owner" etc. are NOT company owners
+      - '\bfounder\b|co-?founder|co founder'
+      - '\bco-?owner\b|co owner'
+      # Standalone "Owner" title only (not "Platform Owner", "Technical Owner", etc.)
+      - '^owner$'
 
 B2B_SaaS:
   description: "B2B SaaS — Engineering, Product, Data leadership"
@@ -62,4 +69,6 @@ B2B_SaaS:
       - 'product\s+(owner|manager)'
       - '(vp|vice president|director|head).{0,35}(delivery|development)'
     low:
-      - '\bfounder\b|co-founder|co founder|\bowner\b|co-owner|co owner'
+      - '\bfounder\b|co-?founder|co founder'
+      - '\bco-?owner\b|co owner'
+      - '^owner$'
