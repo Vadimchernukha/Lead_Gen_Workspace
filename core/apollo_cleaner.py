@@ -571,17 +571,34 @@ def _build_title_prompt(examples: list[dict]) -> str:
     return f"""You standardise job titles for B2B cold email personalisation.
 
 RULES:
-1. Shorten to the most concise, well-known form (target ≤ 4 words).
-2. Use standard English abbreviations:
+1. Shorten to the most concise, well-known form. Aim for ≤ 5 words but NEVER
+   sacrifice the function/domain to hit a word count. The domain MUST remain
+   clear and complete in the output.
+2. Use standard English abbreviations for the LEVEL prefix:
    CEO, CTO, CFO, COO, VP, SVP, EVP, CMO, CRO, CPO, GM,
    Head of, Director of, Manager of.
+   Use R&D (not "R") for Research and Development.
 3. Drop filler qualifiers — "Global", "Regional", "Senior", "Junior",
-   "North America", "EMEA", country/city names — UNLESS they change the meaning.
-4. Translate non-English titles to English:
+   "North America", "EMEA", company/country/city names — UNLESS they change
+   the meaning.
+4. NEVER truncate the domain/function to a single letter or meaningless word.
+   BAD: "Head of R"  (from "Head of Research and Development") → use "Head of R&D"
+   BAD: "Infrastructure"  (from "Infrastructure & Technology Manager") → use "Technology Manager"
+   BAD: "Manager of Pensions"  (from "Pensions Technical Manager") → use "Technical Manager"
+   GOOD: Keep the most meaningful/searchable part of the function even if it adds a word.
+5. When the title has MULTIPLE functions joined by '/', ',', '&', 'and':
+   — keep the HIGHEST-LEVEL function using this priority:
+     C-level > Managing Director > Director > Head > VP/SVP/EVP > Owner > everything else.
+   — for same-level functions keep the more specific/meaningful one.
+   Examples: "Co-founder and CEO" → "CEO",
+             "VP / CFO / Treasurer" → "CFO",
+             "Director & Co-founder" → "Director",
+             "Infrastructure & Technology Manager" → "Technology Manager".
+6. Translate non-English titles to English:
    Geschäftsführer → Managing Director, Produktmanager → Product Manager,
    Algemeen directeur → Managing Director, Teknisk Direktör → Technical Director,
    GF → Managing Director, Inhaber → Owner.
-5. When a title contains multiple roles (separated by '/', ',', '&', or 'and'),
+7. When a title contains multiple roles (separated by '/', ',', '&', or 'and'),
    output ONLY the single most senior role using this strict priority:
    C-level (CEO/CTO/CFO/COO/CMO/CRO/CPO/CIO/CDO) > Managing Director > Director
    > Head > VP/SVP/EVP > Owner > everything else.
