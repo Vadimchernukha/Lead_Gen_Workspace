@@ -20,6 +20,7 @@ from typing import Callable
 
 import anthropic
 import pandas as pd
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +29,10 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-INDUSTRIES_FILE = DATA_DIR / "industries_mapping.csv"
-TITLE_FILE      = DATA_DIR / "title_mapping.csv"
-COMPANY_FILE    = DATA_DIR / "company_name_training.csv"
+INDUSTRIES_FILE       = DATA_DIR / "industries_mapping.csv"
+TITLE_FILE            = DATA_DIR / "title_mapping.csv"
+COMPANY_FILE          = DATA_DIR / "company_name_training.csv"
+TITLE_PRIORITIES_FILE = DATA_DIR / "title_priorities.yaml"
 LLM_CACHE_DIR   = Path(__file__).resolve().parent.parent / "llm_cache"
 
 CLAUDE_MODEL     = "claude-sonnet-4-5-20250929"
@@ -49,7 +51,7 @@ APOLLO_COLUMNS = [
 
 FINAL_COLUMNS = [
     "Company", "Company_Original", "Website", "Industry", "Country", "State", "City",
-    "First name", "Last name", "Title", "Title_Original", "Email",
+    "First name", "Last name", "Title", "Title_Original", "Title_Priority", "Email",
     "Linkedin Person", "Linkedin Company", "Number of employees",
     "Company Country", "Company State", "Company City",
     "Empty_1", "Empty_2", "Empty_3", "Empty_4", "Empty_5",
@@ -775,6 +777,43 @@ async def run_llm_async(
 
 
 # ---------------------------------------------------------------------------
+# Title priority scoring
+# ---------------------------------------------------------------------------
+
+def load_title_priorities() -> dict:
+    if not TITLE_PRIORITIES_FILE.exists():
+        return {}
+    with open(TITLE_PRIORITIES_FILE, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def apply_title_priority(df: pd.DataFrame, profile_name: str) -> pd.DataFrame:
+    """Add a Title_Priority column (High / Medium / Low / Not relevant)."""
+    all_profiles = load_title_priorities()
+    profile = all_profiles.get(profile_name)
+    if not profile:
+        df = df.copy()
+        df["Title_Priority"] = ""
+        return df
+
+    priorities: dict = profile.get("priorities", {})
+
+    def _score(title: str) -> str:
+        if not title or str(title).strip() == "":
+            return "Not relevant"
+        t = str(title).lower()
+        for level in ("high", "medium", "low"):
+            for pattern in priorities.get(level, []):
+                if re.search(pattern, t, re.IGNORECASE):
+                    return level.capitalize()
+        return "Not relevant"
+
+    df = df.copy()
+    df["Title_Priority"] = df["Title"].apply(_score)
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Step 7 — Rename and reorder
 # ---------------------------------------------------------------------------
 
@@ -789,6 +828,7 @@ def rename_and_reorder(df: pd.DataFrame) -> pd.DataFrame:
     out["First name"]        = df["First Name"]
     out["Last name"]         = df["Last Name"]
     out["Title"]             = df["Title_Clean"]
+    out["Title_Priority"]    = df.get("Title_Priority", "")
     out["Email"]             = df["Email"]
     out["Linkedin Person"]   = df["Person Linkedin Url"]
     out["Linkedin Company"]  = df["Company Linkedin Url"]
@@ -817,6 +857,7 @@ def run(
     data: bytes,
     api_key: str | None = None,
     on_progress: Callable[[float, str], None] | None = None,
+    title_priority_profile: str | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """
     Run the full pipeline.
@@ -885,6 +926,15 @@ def run(
 
     _prog(0.95, "Finalising…")
     final = rename_and_reorder(df)
+
+    if title_priority_profile:
+        _prog(0.97, "Scoring title priorities…")
+        final = apply_title_priority(final, title_priority_profile)
+        counts = final["Title_Priority"].value_counts().to_dict()
+        _log(f"Title priority scored ({title_priority_profile}): {counts}")
+    else:
+        final["Title_Priority"] = ""
+
     _log(f"Done. {len(final)} rows → {len(FINAL_COLUMNS)} columns.")
     _prog(1.0, "Complete.")
 

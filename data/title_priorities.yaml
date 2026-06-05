@@ -1,0 +1,65 @@
+# Title Priority Profiles
+# Each profile defines regex patterns (case-insensitive) matched against the cleaned Title.
+# Matching order: high → medium → low → "Not relevant" (first match wins).
+#
+# Add new profiles by copy-pasting a block and editing the patterns.
+
+Finance:
+  description: "Finance sector — Data Engineering, Security, IT & Tech leadership"
+  priorities:
+    high:
+      # Data Engineering / Data Platform
+      - '(vp|vice president|director|head|chief).{0,35}(data engineering|data platform)'
+      # CTO / Chief Technology Officer
+      - '\bcto\b|chief technology officer'
+      # Technology VP/Director/Head (general)
+      - '(vp|vice president|director|head|chief).{0,35}technolog'
+      # Technical / Technology Manager
+      - 'technolog(y|ical)?\s+(manager|director|lead|officer)'
+      - 'technical\s+(manager|director|lead|officer)'
+      # CISO / Information Security
+      - '\bciso\b|chief information security officer'
+      - '(vp|vice president|director|head|chief).{0,35}(information security|cybersecurity|cyber security|infosec|info sec)'
+      # CIO / Head of IT (excluding Operations/Infrastructure)
+      - '\bcio\b|chief information officer'
+      - '(vp|vice president|director|head|chief).{0,35}\bit\b(?!.{0,40}(operations|infrastructure|infra))'
+      # Engineering leadership
+      - '(chief|vp|vice president|director|head).{0,35}engineering'
+      # Analytics leadership
+      - '(chief|vp|vice president|director|head).{0,35}analytics'
+    medium:
+      # CEO / President / GM / MD
+      - '\bceo\b|chief executive officer|\bpresident\b|general manager|managing director'
+      # COO / Head of Operations
+      - '\bcoo\b|chief operating officer'
+      - '(vp|vice president|director|head).{0,35}operations'
+      # Delivery / Development / R&D / Transformation / Strategy (tech-focused)
+      - '(chief|vp|vice president|director|head).{0,35}(delivery|development|r&d|research and development|transformation|strategy)'
+      # Product
+      - '\bcpo\b|chief product officer'
+      - '(vp|vice president|director|head|chief).{0,35}product'
+      - 'product\s+(owner|manager)'
+    low:
+      # Founders / Owners (only when no higher match found)
+      - '\bfounder\b|co-founder|co founder|\bowner\b|co-owner|co owner'
+
+B2B_SaaS:
+  description: "B2B SaaS — Engineering, Product, Data leadership"
+  priorities:
+    high:
+      - '\bcto\b|chief technology officer'
+      - '\bcpo\b|chief product officer'
+      - '(vp|vice president|director|head|chief).{0,35}engineering'
+      - '(vp|vice president|director|head|chief).{0,35}(product|platform)'
+      - '(vp|vice president|director|head|chief).{0,35}(data|analytics|machine learning|ai\b|ml\b)'
+      - '(vp|vice president|director|head|chief).{0,35}technolog'
+      - '\bciso\b|chief information security officer'
+      - '(vp|vice president|director|head|chief).{0,35}(information security|cybersecurity)'
+    medium:
+      - '\bceo\b|chief executive officer|\bpresident\b|general manager|managing director'
+      - '\bcoo\b|chief operating officer'
+      - '(vp|vice president|director|head).{0,35}(operations|strategy|transformation|r&d|research)'
+      - 'product\s+(owner|manager)'
+      - '(vp|vice president|director|head).{0,35}(delivery|development)'
+    low:
+      - '\bfounder\b|co-founder|co founder|\bowner\b|co-owner|co owner'

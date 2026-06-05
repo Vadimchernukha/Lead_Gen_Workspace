@@ -7,7 +7,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from core.apollo_cleaner import run as cleaner_run
+from core.apollo_cleaner import load_title_priorities, run as cleaner_run
 
 
 def run() -> None:
@@ -29,6 +29,21 @@ def run() -> None:
             help="Leave empty to skip the LLM enrichment step.",
         )
         step_llm = st.checkbox("AI enrichment (Claude)", value=bool(api_key))
+
+        st.divider()
+        _priority_profiles = load_title_priorities()
+        _profile_options   = ["— None (skip) —"] + list(_priority_profiles.keys())
+        _selected_profile  = st.selectbox(
+            "Title Priority Profile",
+            options=_profile_options,
+            help=(
+                "Select a profile to score each contact's title as High / Medium / Low / Not relevant. "
+                "Add new profiles in data/title_priorities.yaml."
+            ),
+        )
+        title_priority_profile = None if _selected_profile.startswith("—") else _selected_profile
+        if title_priority_profile and title_priority_profile in _priority_profiles:
+            st.caption(_priority_profiles[title_priority_profile].get("description", ""))
 
     # -------------------------------------------------------------------------
     # File upload
@@ -85,6 +100,7 @@ def run() -> None:
                         raw_bytes,
                         api_key=effective_key,
                         on_progress=on_progress,
+                        title_priority_profile=title_priority_profile,
                     )
                     with log_expander:
                         for line in log_lines:
@@ -97,6 +113,30 @@ def run() -> None:
                     c2.metric("Columns", len(final_df.columns))
                     domain_matches = int(final_df["Email_Domain_Match"].astype(str).str.lower().eq("true").sum())
                     c3.metric("Email/domain match", domain_matches)
+
+                    if title_priority_profile and "Title_Priority" in final_df.columns:
+                        priority_counts = (
+                            final_df["Title_Priority"]
+                            .replace("", "Not relevant")
+                            .value_counts()
+                            .reindex(["High", "Medium", "Low", "Not relevant"], fill_value=0)
+                        )
+                        st.subheader(f"Title Priority — {title_priority_profile}")
+                        cols = st.columns(4)
+                        labels   = ["High", "Medium", "Low", "Not relevant"]
+                        colors   = ["🟢", "🟡", "🟠", "🔴"]
+                        for col, label, color in zip(cols, labels, colors):
+                            col.metric(f"{color} {label}", int(priority_counts.get(label, 0)))
+
+                        not_relevant_pct = (
+                            priority_counts.get("Not relevant", 0) / max(len(final_df), 1) * 100
+                        )
+                        if not_relevant_pct > 0:
+                            st.info(
+                                f"**{priority_counts.get('Not relevant', 0)} contacts ({not_relevant_pct:.0f}%)** "
+                                f"have titles not matching the '{title_priority_profile}' profile — "
+                                f"review them in the `Title_Priority = Not relevant` filter."
+                            )
 
                     st.subheader("Preview (first 10 rows)")
                     st.dataframe(final_df.head(10), use_container_width=True)
