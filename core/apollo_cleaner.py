@@ -863,8 +863,8 @@ def run(
     df = apply_industry_mapping(df, industry_map)
     _log(f"Industry mapping applied ({len(industry_map)} rules).")
 
-    df, cities_filled = fill_missing_cities(df)
-    _log(f"Missing cities filled with country capital: {cities_filled} cell(s).")
+    # Location fields (City, State, Company City, Company State) are intentionally
+    # left as-is from the Apollo export — no backfilling applied.
 
     content_hash = hashlib.md5(data).hexdigest()[:12]
 
