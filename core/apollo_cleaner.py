@@ -280,11 +280,20 @@ def _pick_highest_title(title: str) -> str:
     return min(parts, key=_title_tier)
 
 
+_TITLE_POSTPROCESS: list[tuple[str, str]] = [
+    # LLM sometimes abbreviates "Research and Development" to a single letter
+    (r"^(head|director|vp|vice president|svp|evp|chief)\s+of\s+r\s*$", r"\1 of R&D"),
+    (r"^(head|director|vp|vice president|svp|evp|chief)\s+of\s+r\b(?!&)", r"\1 of R&D"),
+]
+
+
 def clean_title_text(title: str) -> str:
     if not title:
         return ""
     title = _transliterate(str(title))
     title = _pick_highest_title(title)
+    for pattern, replacement in _TITLE_POSTPROCESS:
+        title = re.sub(pattern, replacement, title, flags=re.IGNORECASE)
     return title
 
 
@@ -567,7 +576,24 @@ OUTPUT: {{"results": [{{"key": " ", "company": " "}}, ...]}}
 Return ONLY the raw JSON. No markdown, no explanation."""
 
 
+_TITLE_HARDCODED_EXAMPLES: list[dict] = [
+    {"original": "Head of Research and Development", "cleaned": "Head of R&D"},
+    {"original": "Head of Research & Development", "cleaned": "Head of R&D"},
+    {"original": "Director of Research and Development", "cleaned": "Director of R&D"},
+    {"original": "Infrastructure & Technology Manager", "cleaned": "Technology Manager"},
+    {"original": "Infrastructure and Technology Manager", "cleaned": "Technology Manager"},
+    {"original": "Pensions Technical Manager", "cleaned": "Technical Manager"},
+    {"original": "Claims Technical Manager", "cleaned": "Technical Manager"},
+    {"original": "Business Reporting (Technical) Manager", "cleaned": "Technical Manager"},
+    {"original": "Workplace Technology Manager", "cleaned": "Technology Manager"},
+    {"original": "Treasury IT Manager", "cleaned": "IT Manager"},
+    {"original": "CRM Technical Manager", "cleaned": "Technical Manager"},
+    {"original": "Head of Information, Technical and Solutions Architecture", "cleaned": "Head of Architecture"},
+]
+
+
 def _build_title_prompt(examples: list[dict]) -> str:
+    all_examples = _TITLE_HARDCODED_EXAMPLES + examples
     return f"""You standardise job titles for B2B cold email personalisation.
 
 RULES:
@@ -577,15 +603,15 @@ RULES:
 2. Use standard English abbreviations for the LEVEL prefix:
    CEO, CTO, CFO, COO, VP, SVP, EVP, CMO, CRO, CPO, GM,
    Head of, Director of, Manager of.
-   Use R&D (not "R") for Research and Development.
+   Always use R&D (NEVER "R") for Research and Development.
 3. Drop filler qualifiers — "Global", "Regional", "Senior", "Junior",
    "North America", "EMEA", company/country/city names — UNLESS they change
    the meaning.
 4. NEVER truncate the domain/function to a single letter or meaningless word.
-   BAD: "Head of R"  (from "Head of Research and Development") → use "Head of R&D"
-   BAD: "Infrastructure"  (from "Infrastructure & Technology Manager") → use "Technology Manager"
-   BAD: "Manager of Pensions"  (from "Pensions Technical Manager") → use "Technical Manager"
-   GOOD: Keep the most meaningful/searchable part of the function even if it adds a word.
+   WRONG: "Head of R"  → CORRECT: "Head of R&D"
+   WRONG: "Infrastructure" → CORRECT: "Technology Manager"
+   WRONG: "Manager of Pensions" → CORRECT: "Technical Manager"
+   Keep the most meaningful/searchable part of the function even if it adds a word.
 5. When the title has MULTIPLE functions joined by '/', ',', '&', 'and':
    — keep the HIGHEST-LEVEL function using this priority:
      C-level > Managing Director > Director > Head > VP/SVP/EVP > Owner > everything else.
@@ -608,7 +634,7 @@ RULES:
              "Owner and Managing Director" → "Managing Director".
 
 Examples (original → cleaned):
-{json.dumps(examples, ensure_ascii=False, indent=2)}
+{json.dumps(all_examples, ensure_ascii=False, indent=2)}
 
 INPUT : {{"rows": [{{"key": " ", "title": " "}}, ...]}}
 OUTPUT: {{"results": [{{"key": " ", "title": " "}}, ...]}}
